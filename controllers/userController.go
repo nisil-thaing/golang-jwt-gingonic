@@ -202,6 +202,25 @@ func FetchUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, allUsers[0])
 }
 
+func loadUserInfo(userId string) (*models.PublishableUserInfo, error) {
+  ctx, cancel := context.WithTimeout(context.Background(), 100 * time.Second)
+
+  var user models.User
+
+  err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
+
+  defer cancel()
+
+  if err != nil {
+    log.Fatal(err)
+    return nil, err
+  }
+
+  data := helpers.ToPublishableInfo(user)
+
+  return &data, nil
+}
+
 func FetchUserById(c *gin.Context) {
 	userId := c.Param("user_id")
 
@@ -209,21 +228,31 @@ func FetchUserById(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	
+  data, err := loadUserInfo(userId)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-
-	var user models.User
-	err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
-
-	defer cancel()
-
-	if err != nil {
-		log.Fatal(err)
+  if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Hmm maybe there are no users mapped with that ID!"})
-		return
-	}
+    return
+  }
 
-  responseData := helpers.ToPublishableInfo(user)
+	c.JSON(http.StatusOK, data)
+}
 
-	c.JSON(http.StatusOK, responseData)
+func GetAuthUserInfo(c *gin.Context) {
+  userId := c.GetString("uid")
+
+  if userId == "" {
+    c.JSON(http.StatusUnauthorized, gin.H{"error": "Oops! We cann't get your information at the moment!"})
+    return
+  }
+
+  data, err := loadUserInfo(userId)
+
+  if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Hmm maybe there are no users mapped with that ID!"})
+    return
+  }
+
+  c.JSON(http.StatusOK, data)
 }
